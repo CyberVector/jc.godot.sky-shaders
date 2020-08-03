@@ -6,61 +6,59 @@
 //===========================================================
 shader_type sky;
 
-// Params.
-//------------------------------------------------------------------------------
-
 // General.
 uniform float _TonemapLevel: hint_range(0.0, 1.0) = 1.0;
-uniform float _Contrast: hint_range(0.0, 1.0) = 0.0;
+uniform float _Contrast: hint_range(0.0, 1.0) = 0.3;
 uniform float _Darkness: hint_range(0.0, 1.0) = 0.5;
 uniform float _Exposure = 1.0;
 
 // Intensity.
 uniform float _SunIntensity = 40.0;
-uniform float _NightIntensity = 0.1;
+uniform float _NightIntensity: hint_range(0.0, 1.0) = 0.03;
 
 // Tint.
 uniform vec4 _DayTint: hint_color = vec4(1.0);
-uniform vec4 _NightTint: hint_color = vec4(0.0, 0.19, 0.36, 1.0);
-uniform vec4 _SunsetDawnTint: hint_color = vec4(0.96, 0.26, 0.07, 1.0);
+uniform vec4 _NightTint: hint_color = vec4(1.0);
+uniform vec4 _SDTint: hint_color = vec4(0.91, 0.42, 0.35, 1.0);
 
 // Zenith.
 uniform float _Thickness = 1.0;
-uniform float _ZenithOffset: hint_range(0.0, 1.0) = 0.0;
-uniform float _HorizonLevel: hint_range(0.0, 1.0) = 1.0;
+uniform float _Level: hint_range(0.0, 20.0) = 1.0;
+uniform float _YOffset: hint_range(0.0, 1.0) = 0.0;
 
 // _Mie.
-uniform float _Mie = 0.03;
+uniform float _Mie = 0.07;
 uniform float _Turbidity = 0.001;
 
 // Sun Mie.
-uniform vec4 _SunMieTint: hint_color;
+uniform vec4  _SunMieTint: hint_color = vec4(1.0);
 uniform float _SunMieIntensity = 1.0;
-uniform float _SunMieAnisotropy: hint_range(0.0, 0.9999);
+uniform float _SunMieAnisotropy: hint_range(0.0, 0.999) = 0.75;
 
 // Sun Disk.
-uniform vec4 _SunDiskTint: hint_color = vec4(0.99, 0.49, 0.22, 1.0);
+uniform vec4  _SunDiskTint: hint_color = vec4(0.99, 0.49, 0.22, 1.0);
 uniform float _SunDiskIntensity = 1.0;
 uniform float _SunDiskSize = 0.022;
 
-
-// Constants.
-//------------------------------------------------------------------------------
-
 // PI.
-const float kPI = 3.1415927;     // π.
-const float kTAU = 6.2831853;    // π * 2.
-const float kPIRCP = 0.3183098;  // 1/π.
-const float kPI4 = 12.5663706;   // PI(π)*4.
+const float kPI     = 3.1415927;     // π.
+const float kTAU    = 6.2831853;    // π * 2.
+const float kPIRCP  = 0.3183098;  // 1/π.
+const float kPI4    = 12.5663706;   // PI(π)*4.
 const float kPI4RCP = 0.0795775; // 1/(PI(π)*4).
-const float k3PI16 = 0.0596831;  // 3/(PI(π)*16).
+const float k3PI16  = 0.0596831;  // 3/(PI(π)*16).
 
 // Zenith length.
 const float kRayleighZenithLength = 8.4e3;
 const float kMieZenithLength = 1.25e3;
 
 // Beta Ray.
+// 680, 550, 440
 const vec3 kBetaRay = vec3(5.807035e-06, 1.356874e-05, 3.312679e-05);
+
+// 650, 570, 475
+//const vec3 kBetaRay = vec3(6.955633e-6, 1.176226e-05, 2.439022e-05);
+
 const vec3 kBetaMie = vec3(0.000434);
 
 // Functions.
@@ -95,7 +93,6 @@ float sunDisk(float size, vec3 r, vec3 coords)
 vec3 partialMiePhase(in float g)
 {
 	vec3 ret;
-	
 	float g2 = g * g;
 	ret.x = ((1.0 - g2) / (2.0 + g2));
 	ret.y = (1.0 + g2);
@@ -107,6 +104,7 @@ vec3 partialMiePhase(in float g)
 float miePhase(float mult, float mu, float g)
 {
 	vec3 phg = partialMiePhase(g);
+	
 	return (mult * phg.x * ((1.0 + mu * mu) * 
 		pow(phg.y - (phg.z * mu), -1.5))) * _SunMieIntensity;
 }
@@ -116,25 +114,25 @@ float rayleighPhase(float mu)
 	return k3PI16 * (1.0 + mu * mu);
 }
 
-void computeOpticalDepth(float side, out float sr, out float sm)
-{
-	side = saturateReal(side * _HorizonLevel);
-	side = max(0.0, side);
-	
-	float zenith = acos(side);
-	zenith = cos(zenith) + 0.15 * pow(93.885 - ((zenith * 180.0) / kPI), -1.253);
-	zenith = 1.0 / (zenith + (_ZenithOffset * 0.5));
-	
-	sr = zenith * kRayleighZenithLength;
-	sm = zenith * kMieZenithLength;
-}
+//void computeOpticalDepth(float side, out float sr, out float sm)
+//{
+//	side = max(0.0, side);
+//	side = saturateReal(side * _Level);
+//	
+//	float zenith = acos(side);
+//	zenith = cos(zenith) + 0.15 * pow(93.885 - ((zenith * 180.0) / kPI), -1.253);
+//	zenith = 1.0 / zenith;
+//	
+//	sr = zenith * kRayleighZenithLength;
+//	sm = zenith * kMieZenithLength;
+//}
 
-void computeFastOpticalDepth(float side, out float sr, out float sm)
+void opticalDepth(float side, out float sr, out float sm)
 {
 	side = max(0.03, side + 0.025);
-	side = saturateReal(side * _HorizonLevel);
-	side = 1.0 / (side + _ZenithOffset);
-		
+	side = (side * _Level);
+	side = 1.0 / (side + _YOffset);
+	
 	sr = side * kRayleighZenithLength;
 	sm = side * kMieZenithLength;
 }
@@ -161,8 +159,8 @@ vec3 atmosphericScattering(float sr, float sm, float mu)
 	scatter *= saturateReal(LIGHT0_DIRECTION.y + 0.45);
 	scatter = mix(scatter, scatter * ( 1.0 - extinctionFactor), _Darkness);
 	
-	float st = saturateReal(1.0 - (LIGHT0_DIRECTION.y + 0.40));
-	vec3 sunsetCol = mix(_DayTint.rgb, _SunsetDawnTint.rgb, st);
+	float st = saturateReal(1.0 - (LIGHT0_DIRECTION.y));
+	vec3 sunsetCol = mix(_DayTint.rgb, _SDTint.rgb, st);
 	
 	vec3 nightScatter = (1.0 - extinctionFactor) * 
 		saturateReal((-LIGHT0_DIRECTION.y + 0.30)) * _NightTint.rgb * _NightIntensity;
@@ -172,16 +170,14 @@ vec3 atmosphericScattering(float sr, float sm, float mu)
 
 void fragment()
 {
-	
 	float y = dot(vec3(0.0, 1.0, 0.0), EYEDIR);
 	
 	float sr; float sm;
-	computeFastOpticalDepth(y, sr, sm);
+	opticalDepth(y, sr, sm);
 	
 	float mu = dot(normalize(LIGHT0_DIRECTION), EYEDIR);
 	
 	vec3 scatter = atmosphericScattering(sr, sm, mu);
-	
 	scatter = filmicTonemap(scatter, _Exposure, _TonemapLevel);
 	scatter = pow3RGB(scatter, _Contrast);
 	scatter += sunDisk(_SunDiskSize, LIGHT0_DIRECTION, EYEDIR) * _SunDiskTint.rgb * 
