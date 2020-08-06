@@ -95,7 +95,7 @@ float sunDisk(float size, vec3 r, vec3 coords)
 
 vec3 partialMiePhase(in float g)
 {
-	vec3 ret;
+	vec3 ret; 
 	float g2 = g * g;
 	ret.x = ((1.0 - g2) / (2.0 + g2));
 	ret.y = (1.0 + g2);
@@ -107,7 +107,6 @@ vec3 partialMiePhase(in float g)
 float miePhase(float mu, float g)
 {
 	vec3 partial = partialMiePhase(g);
-	
 	return (kPI4 * partial.x * ((1.0 + mu * mu) * 
 		pow(partial.y - (partial.z * mu), -1.5))) * _SunMieIntensity;
 }
@@ -134,8 +133,7 @@ float rayleighPhase(float mu)
 // Custom and more fast.
 void opticalDepth(float y, out float sr, out float sm)
 {
-	y = max(0.03, y + 0.025);
-	y = (y + _DownOffset);
+	y = max(0.03, y + 0.025) + _DownOffset;
 	y = 1.0 / (y * _YMult);
 	
 	sr = y * kRayleighZenithLength;
@@ -147,56 +145,61 @@ vec3 atmosphericScattering(float sr, float sm, float mu, vec3 angleMult)
 	vec3 betaMie = kBetaMie * 0.001 * _Mie;
 	vec3 betaRay = kBetaRay * _Thickness;
 	//------------------------------------------------------------------------
-	vec3 extinctionFactor = exp(-(betaRay * sr + betaMie * sm));
-	extinctionFactor      = saturateRGB(extinctionFactor);
 	
+	vec3 extinctionFactor = saturateRGB(exp(-(betaRay * sr + betaMie * sm)));
+	
+	// Final Extinction Factor.
 	vec3 fExtinctionFactor = mix(1.0 - extinctionFactor, 
 		(1.0 - extinctionFactor) * extinctionFactor, angleMult.x);
-	
 	//------------------------------------------------------------------------
+	
 	float rayleighPhase = rayleighPhase(mu);
 	
 	vec3 BRT = betaRay * rayleighPhase;
-	vec3 BMT = betaMie * miePhase(mu, _SunMieAnisotropy) * _SunMieIntensity;
-	BMT *= _SunMieTint.rgb;
+	vec3 BMT = betaMie * miePhase(mu, _SunMieAnisotropy);
+	BMT *= _SunMieIntensity * _SunMieTint.rgb;
 	
-	//------------------------------------------------------------------------
 	vec3 BRMT = (BRT + BMT) / (betaRay + betaMie);
+	//------------------------------------------------------------------------
 	
 	vec3 scatter = _SunIntensity * (BRMT * fExtinctionFactor) * _DayTint.rgb;
 	scatter *= angleMult.y;
-	scatter = mix(scatter, scatter * (1.0 - extinctionFactor), _Darkness);
+	scatter  = mix(scatter, scatter * (1.0 - extinctionFactor), _Darkness);
+	//------------------------------------------------------------------------
 	
+	// Sunsent/Dawn Color.
 	vec3 sdCol = mix(_DayTint.rgb, _SDTint.rgb, angleMult.x);
-	vec3 nightScatter = (1.0 - extinctionFactor) * angleMult.z *
-		_NightTint.rgb * _NightIntensity;
+	vec3 nightScatter = (1.0 - extinctionFactor) * angleMult.z;
+	nightScatter *= _NightTint.rgb * _NightIntensity;
+	//------------------------------------------------------------------------
 	
 	return (scatter * sdCol) + nightScatter;
 }
 
 void fragment()
 {
-	float y        = dot(vec3(0.0, 1.0, 0.0), EYEDIR) + _HorizonOffset;
-	float cosTheta = dot(normalize(LIGHT0_DIRECTION), EYEDIR);
-	
 	vec4 anglesMult;
 	anglesMult.x = saturateReal(1.0 - LIGHT0_DIRECTION.y);
 	anglesMult.y = saturateReal(LIGHT0_DIRECTION.y + 0.45);
 	anglesMult.z = saturateReal(-LIGHT0_DIRECTION.y + 0.30);
 	anglesMult.w = saturateReal(LIGHT0_DIRECTION.y);
 	
+	float y        = dot(vec3(0.0, 1.0, 0.0), EYEDIR) + _HorizonOffset;
+	float cosTheta = dot(normalize(LIGHT0_DIRECTION), EYEDIR);
+	
 	// Scattering.
 	float sr; float sm; opticalDepth(y, sr, sm);
 	vec3 scatter = atmosphericScattering(sr, sm, cosTheta, anglesMult.xyz);
 	
-	// sunDisk.
+	// Sun Disk.
 	scatter += sunDisk(_SunDiskSize, LIGHT0_DIRECTION, EYEDIR) * _SunDiskTint.rgb *
 		_SunDiskIntensity * scatter;
 	
-	// Color correction.
+	// Color Correction.
 	scatter = photoTonemap(scatter, _Exposure, _TonemapLevel);
 	scatter = pow3RGB(scatter, _Contrast);
 	
+	// Final Color.
 	vec3 finalColor = mix(scatter, _GroundTint.rgb * anglesMult.w, saturateReal(-y * 100.0) * _GroundTint.a);
 	
 	COLOR = finalColor;
