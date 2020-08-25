@@ -195,12 +195,12 @@ void fragment()
 	scatter += sunDisk(_SunDiskSize, LIGHT0_DIRECTION, EYEDIR) * _SunDiskTint.rgb *
 		_SunDiskIntensity * scatter;
 	
+	// Final Color.
+	vec3 finalColor = mix(scatter, _GroundTint.rgb * anglesMult.w, saturateReal(-y * 100.0) * _GroundTint.a);
+	
 	// Color Correction.
 	scatter = photoTonemap(scatter, _Exposure, _TonemapLevel);
 	scatter = pow3RGB(scatter, _Contrast);
-	
-	// Final Color.
-	vec3 finalColor = mix(scatter, _GroundTint.rgb * anglesMult.w, saturateReal(-y * 100.0) * _GroundTint.a);
 	
 	COLOR = finalColor;
 }
